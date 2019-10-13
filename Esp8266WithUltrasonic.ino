@@ -34,6 +34,7 @@ void setup() {
   server.on("/status", handleStatus);
   server.on("/processRequest",processRequest);
   server.on("/masterControl",masterControl);
+  server.on("/waterLavel",waterLavel);
   server.begin();
   delay(500);
   
@@ -76,7 +77,7 @@ void loop() {
       digitalWrite(PUMP_ON_PIN,LOW);
     }
   }
-  if(distance > 150 && reserver_water_lavel == 0) {
+  if(distance > 100 && reserver_water_lavel == 0) {
     Serial.print("IF Part");
     water_lavel_count++;
     if(water_lavel_count > 100) {
@@ -102,11 +103,11 @@ void handleStatus() {
   if(post_data_string == "PUMP") {
     message = "";
     char pin_status = '0';
-    if(digitalRead(PUMP_ON_PIN) == 0) {
+    if(digitalRead(PUMP_ON_PIN) == 1) {
       pin_status = '1';
     }
     //pin_status = !digitalRead(post_data);
-    message = "{'Pump On Status': ";
+    message = "{'pump_on_status': ";
     message += pin_status;
     message += " }";
   }
@@ -116,7 +117,7 @@ void handleStatus() {
     if(digitalRead(RESERVER_INPUT) == 1) {
       pin_status = '1';
     }
-    message = "{'Reserver status': ";
+    message = "{'reserver_status': ";
     message += pin_status;
     message += " }";
   }
@@ -172,5 +173,14 @@ void masterControl() {
     message = "{'success' : '1'}"; 
   }
   server.send(200, "text/plain", message);
+}
+
+void waterLavel() {
+  String message = "";
+   message = "";
+    message = "{'water_level': ";
+    message += distance;
+    message += " }";
+    server.send(200, "text/plain", message);
 }
 
