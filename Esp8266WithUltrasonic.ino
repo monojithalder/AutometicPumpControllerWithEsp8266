@@ -1,5 +1,6 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <EEPROM.h>
 const char* ssid     = "Monojit_Airtel";
 const char* password = "web2013techlink";
 
@@ -9,6 +10,10 @@ IPAddress subnet(255, 255, 255, 0);
 
 long duration;
 int distance;
+int high_level_addr = 20;
+int low_level_addr = 40;
+int high_level = 0;
+int low_level  = 0;
 
 #define TRIGGERPIN D1
 #define ECHOPIN    D2
@@ -35,6 +40,8 @@ void setup() {
   server.on("/processRequest",processRequest);
   server.on("/masterControl",masterControl);
   server.on("/waterLavel",waterLavel);
+  server.on("/setTankHighLevel",setTankHighLevel);
+  server.on("/setTankLowLevel",setTankLowLevel);
   server.begin();
   delay(500);
   
@@ -65,6 +72,12 @@ void loop() {
   Serial.print("Distance: ");
   Serial.println(distance);
 
+  low_level  = EEPROM.read(low_level_addr);
+  high_level = EEPROM.read(high_level_addr);
+
+  Serial.println("Low Level: "+low_level);
+  Serial.println("High Level: "+high_level);
+  
   //get resever water lavel
   reserver_water_lavel = digitalRead(RESERVER_INPUT);
 
@@ -77,14 +90,14 @@ void loop() {
       digitalWrite(PUMP_ON_PIN,LOW);
     }
   }
-  if(distance > 100 && reserver_water_lavel == 0) {
+  if(distance > low_level && reserver_water_lavel == 0) {
     Serial.print("IF Part");
     water_lavel_count++;
     if(water_lavel_count > 100) {
       pump_on_condition = 1;
     }
   }
-  if(distance < 20 || reserver_water_lavel == 1) {
+  if(distance < high_level || reserver_water_lavel == 1) {
     Serial.print("ELSE part");
     pump_on_condition = 0;
     water_lavel_count = 0;
@@ -184,3 +197,40 @@ void waterLavel() {
     server.send(200, "text/plain", message);
 }
 
+void setTankHighLevel() {
+  String message = "";
+  if(server.arg("level") == "") {
+    message = "{'err_msg' : 'Invalid level'}";
+  }
+  else {
+    String post_data_string = "";
+    char post_data_char[2];
+    int post_data = 0;
+    char pin_status = '0';
+    post_data_string = server.arg("level");
+    post_data_string.toCharArray(post_data_char,2);
+    post_data = atoi(post_data_char);
+    EEPROM.write(high_level_addr, post_data);
+    message = "{'success' : '1'}"; 
+  }
+  server.send(200, "text/plain", message);
+}
+
+void setTankLowLevel() {
+  String message = "";
+  if(server.arg("level") == "") {
+    message = "{'err_msg' : 'Invalid level'}";
+  }
+  else {
+    String post_data_string = "";
+    char post_data_char[2];
+    int post_data = 0;
+    char pin_status = '0';
+    post_data_string = server.arg("level");
+    post_data_string.toCharArray(post_data_char,2);
+    post_data = atoi(post_data_char);
+    EEPROM.write(low_level_addr, post_data);
+    message = "{'success' : '1'}"; 
+  }
+  server.send(200, "text/plain", message);
+}
