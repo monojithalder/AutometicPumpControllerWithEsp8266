@@ -1,6 +1,10 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
 const char* ssid     = "Monojit_Airtel";
 const char* password = "web2013techlink";
 
@@ -55,10 +59,36 @@ void setup() {
   //digitalWrite(0,HIGH);
   digitalWrite(PUMP_ON_PIN,LOW);
   Serial.begin(9600);
+  EEPROM.begin(512);
   //digitalWrite(2,LOW);
+  /**OTA CODE START **/
+
+  ArduinoOTA.onStart([]() {
+    Serial.println("Start");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  ArduinoOTA.begin();
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+/** OTA CODE END **/
 }
 
 void loop() {
+  ArduinoOTA.handle();
   digitalWrite(TRIGGERPIN, LOW);  
   delayMicroseconds(3); 
   
@@ -69,14 +99,15 @@ void loop() {
   duration = pulseIn(ECHOPIN, HIGH);
   distance= duration*0.034/2;
   //Serial.print(distance);
-  Serial.print("Distance: ");
-  Serial.println(distance);
+  //Serial.print("Distance: ");
+  //Serial.println(distance);
 
   low_level  = EEPROM.read(low_level_addr);
   high_level = EEPROM.read(high_level_addr);
 
-  Serial.println("Low Level: "+low_level);
-  Serial.println("High Level: "+high_level);
+  Serial.println("Low Level: "+ String(low_level));
+  Serial.println("High Level: "+ String(high_level));
+  Serial.print(high_level);
   
   //get resever water lavel
   reserver_water_lavel = digitalRead(RESERVER_INPUT);
@@ -91,19 +122,20 @@ void loop() {
     }
   }
   if(distance > low_level && reserver_water_lavel == 0) {
-    Serial.print("IF Part");
+    //Serial.print("IF Part");
     water_lavel_count++;
     if(water_lavel_count > 100) {
       pump_on_condition = 1;
     }
   }
   if(distance < high_level || reserver_water_lavel == 1) {
-    Serial.print("ELSE part");
+    //Serial.print("ELSE part");
     pump_on_condition = 0;
     water_lavel_count = 0;
   }
-  Serial.print("Count: ");
-  Serial.println(water_lavel_count);
+  //Serial.println("TESTing");
+  //Serial.print("Count: ");
+  //Serial.println(water_lavel_count);
   delay(1000);
   server.handleClient();
 }
@@ -134,6 +166,7 @@ void handleStatus() {
     message += pin_status;
     message += " }";
   }
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain",message); 
 }
 
@@ -160,6 +193,7 @@ void processRequest() {
     }
     message = "{'success' : '1'}"; 
   }
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
 }
 
@@ -185,6 +219,7 @@ void masterControl() {
     }
     message = "{'success' : '1'}"; 
   }
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
 }
 
@@ -194,6 +229,8 @@ void waterLavel() {
     message = "{'water_level': ";
     message += distance;
     message += " }";
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    
     server.send(200, "text/plain", message);
 }
 
@@ -204,15 +241,17 @@ void setTankHighLevel() {
   }
   else {
     String post_data_string = "";
-    char post_data_char[2];
     int post_data = 0;
-    char pin_status = '0';
+    byte data;
     post_data_string = server.arg("level");
-    post_data_string.toCharArray(post_data_char,2);
-    post_data = atoi(post_data_char);
-    EEPROM.write(high_level_addr, post_data);
+    post_data = post_data_string.toInt();
+    data = (int) post_data;
+    EEPROM.write(high_level_addr, data);
+    EEPROM.commit();
     message = "{'success' : '1'}"; 
+    Serial.println("Level : "+ String(post_data));
   }
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
 }
 
@@ -223,14 +262,15 @@ void setTankLowLevel() {
   }
   else {
     String post_data_string = "";
-    char post_data_char[2];
     int post_data = 0;
-    char pin_status = '0';
+    byte data;
     post_data_string = server.arg("level");
-    post_data_string.toCharArray(post_data_char,2);
-    post_data = atoi(post_data_char);
+    post_data = post_data_string.toInt();
+    data = (int) post_data;
     EEPROM.write(low_level_addr, post_data);
+    EEPROM.commit();
     message = "{'success' : '1'}"; 
   }
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
 }
