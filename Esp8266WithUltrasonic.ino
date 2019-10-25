@@ -16,6 +16,7 @@ long duration;
 int distance;
 int high_level_addr = 20;
 int low_level_addr = 40;
+int master_control_addr = 3;
 int high_level = 0;
 int low_level  = 0;
 
@@ -24,7 +25,7 @@ int low_level  = 0;
 #define RESERVER_INPUT D6
 #define PUMP_ON_PIN D5
 
-int master_pump_on = 1;
+int master_pump_on;
 int pump_on_condition = 0;
 int reserver_water_lavel = 0;
 int water_lavel_count = 0;
@@ -104,7 +105,10 @@ void loop() {
 
   low_level  = EEPROM.read(low_level_addr);
   high_level = EEPROM.read(high_level_addr);
-
+  master_pump_on = EEPROM.read(master_control_addr);
+  if(master_pump_on == 255) {
+    master_pump_on = 0;
+  }
   Serial.println("Low Level: "+ String(low_level));
   Serial.println("High Level: "+ String(high_level));
   Serial.print(high_level);
@@ -217,6 +221,8 @@ void masterControl() {
     else {
       master_pump_on = 0;
     }
+    EEPROM.write(master_control_addr, master_pump_on);
+    EEPROM.commit();
     message = "{'success' : '1'}"; 
   }
   server.sendHeader("Access-Control-Allow-Origin", "*");
