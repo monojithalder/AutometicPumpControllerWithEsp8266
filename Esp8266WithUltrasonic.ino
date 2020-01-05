@@ -8,7 +8,7 @@
 const char* ssid     = "Monojit_Airtel";
 const char* password = "web2013techlink";
 
-IPAddress ip(192,168,1, 52);
+IPAddress ip(192,168,1, 55);
 IPAddress gateway(192,168,1,1); // set gateway to match your network
 IPAddress subnet(255, 255, 255, 0);
 
@@ -19,16 +19,27 @@ int low_level_addr = 40;
 int master_control_addr = 3;
 int high_level = 0;
 int low_level  = 0;
+int pump_controll_mode = 0;
+int select_pump = 0;
+int pump_controll_mode_address = 2;
+int select_pump_address = 4;
+int pump_start_height = 0;
+int last_pump_on = 1;
+int check_water_counter = 0;
 
 #define TRIGGERPIN D1
 #define ECHOPIN    D2
 #define RESERVER_INPUT D6
-#define PUMP_ON_PIN D5
+#define PUMP_1_ON_PIN D5
+#define PUMP_2_ON_PIN D7
 
 int master_pump_on;
 int pump_on_condition = 0;
 int reserver_water_lavel = 0;
 int water_lavel_count = 0;
+
+int master_status = 0;
+String condition = "";
 // Set web server port number to 80
 ESP8266WebServer server(80);
 
@@ -38,7 +49,8 @@ void setup() {
   pinMode(TRIGGERPIN, OUTPUT);
   pinMode(ECHOPIN, INPUT);
   pinMode(RESERVER_INPUT,INPUT);
-  pinMode(PUMP_ON_PIN,OUTPUT);
+  pinMode(PUMP_1_ON_PIN,OUTPUT);
+  pinMode(PUMP_2_ON_PIN,OUTPUT);
 
   //Initialize Server
   server.on("/status", handleStatus);
@@ -47,6 +59,8 @@ void setup() {
   server.on("/waterLavel",waterLavel);
   server.on("/setTankHighLevel",setTankHighLevel);
   server.on("/setTankLowLevel",setTankLowLevel);
+  server.on("/set-pump-controll-mode",setPumpControllMode);
+  server.on("/debug",debug);
   server.begin();
   delay(500);
   
@@ -56,12 +70,21 @@ void setup() {
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
   }
-  //digitalWrite(2,HIGH);
-  //digitalWrite(0,HIGH);
-  digitalWrite(PUMP_ON_PIN,LOW);
+  digitalWrite(PUMP_1_ON_PIN,LOW);
+  digitalWrite(PUMP_2_ON_PIN,LOW);
+  
   Serial.begin(9600);
   EEPROM.begin(512);
-  //digitalWrite(2,LOW);
+  pump_controll_mode = EEPROM.read(pump_controll_mode_address);
+  select_pump = EEPROM.read(select_pump_address);
+  if(pump_controll_mode == 255 || pump_controll_mode == 0) {
+     pump_controll_mode = 1;
+  }
+
+  if(select_pump == 255 || pump_controll_mode == 0) {
+    select_pump = 1;
+  }
+  
   /**OTA CODE START **/
 
   ArduinoOTA.onStart([]() {
@@ -99,9 +122,7 @@ void loop() {
   digitalWrite(TRIGGERPIN, LOW);
   duration = pulseIn(ECHOPIN, HIGH);
   distance= duration*0.034/2;
-  //Serial.print(distance);
-  //Serial.print("Distance: ");
-  //Serial.println(distance);
+
 
   low_level  = EEPROM.read(low_level_addr);
   high_level = EEPROM.read(high_level_addr);
@@ -112,21 +133,89 @@ void loop() {
   Serial.println("Low Level: "+ String(low_level));
   Serial.println("High Level: "+ String(high_level));
   Serial.print(high_level);
+
+  pump_controll_mode = EEPROM.read(pump_controll_mode_address);
+  select_pump = EEPROM.read(select_pump_address);
+  if(pump_controll_mode == 255 || pump_controll_mode == 0) {
+     pump_controll_mode = 1;
+  }
+
+  if(select_pump == 255 || pump_controll_mode == 0) {
+    select_pump = 1;
+  }
   
   //get resever water lavel
   reserver_water_lavel = digitalRead(RESERVER_INPUT);
-
+  if(check_water_counter >= 200) {
+    check_water_counter = 0;
+    if(distance ==  pump_start_height || distance > pump_start_height) {
+      if(pump_controll_mode == 2) {
+        if(select_pump == 1) {
+          select_pump = 2;
+        }
+        if(select_pump == 2) {
+          select_pump = 1;
+        }
+      }
+      else {
+        pump_on_condition = 0;
+      }
+    }
+  }
+  
   //check is master pump status
   if(master_pump_on == 1) {
     if(pump_on_condition == 1) {
-      digitalWrite(PUMP_ON_PIN,HIGH);
+      check_water_counter++;
+      //temp code
+      master_status =1;
+      if(pump_controll_mode == 1) {
+        if(select_pump == 1) {
+          digitalWrite(PUMP_1_ON_PIN,HIGH);
+          digitalWrite(PUMP_2_ON_PIN,LOW);
+          if(pump_start_height == 0) {
+            pump_start_height = distance;
+          }
+        }
+        if(select_pump == 2) {
+          digitalWrite(PUMP_2_ON_PIN,HIGH);
+          digitalWrite(PUMP_1_ON_PIN,LOW);
+          if(pump_start_height == 0) {
+            pump_start_height = distance;
+          }
+        }
+      }
+      if(pump_controll_mode == 2) {
+        if(last_pump_on == 1) {
+          digitalWrite(PUMP_2_ON_PIN,HIGH);
+          digitalWrite(PUMP_1_ON_PIN,LOW);
+          if(pump_start_height == 0) {
+            pump_start_height = distance;
+          }
+          last_pump_on = 2;
+        }
+        if(last_pump_on == 2) {
+          digitalWrite(PUMP_1_ON_PIN,HIGH);
+          digitalWrite(PUMP_2_ON_PIN,LOW);
+          if(pump_start_height == 0) {
+            pump_start_height = distance;
+          }
+          last_pump_on = 1;
+        }
+      }
+      //digitalWrite(PUMP_1_ON_PIN,HIGH);
     }
     else {
-      digitalWrite(PUMP_ON_PIN,LOW);
+      master_status = 2;
+      digitalWrite(PUMP_1_ON_PIN,LOW);
+      digitalWrite(PUMP_2_ON_PIN,LOW);
+      pump_start_height = 0;
+      check_water_counter = 0;
     }
   }
   if(distance > low_level && reserver_water_lavel == 0) {
     //Serial.print("IF Part");
+    condition = "IF Part";
     water_lavel_count++;
     if(water_lavel_count > 100) {
       pump_on_condition = 1;
@@ -134,6 +223,7 @@ void loop() {
   }
   if(distance < high_level || reserver_water_lavel == 1) {
     //Serial.print("ELSE part");
+    condition = "ELSE Part";
     pump_on_condition = 0;
     water_lavel_count = 0;
   }
@@ -152,7 +242,7 @@ void handleStatus() {
   if(post_data_string == "PUMP") {
     message = "";
     char pin_status = '0';
-    if(digitalRead(PUMP_ON_PIN) == 1) {
+    if(digitalRead(PUMP_1_ON_PIN) == 1) {
       pin_status = '1';
     }
     //pin_status = !digitalRead(post_data);
@@ -190,7 +280,7 @@ void processRequest() {
     post_data = atoi(post_data_char);
     if(post_data == 1) {
       pump_on_condition = 1;
-      digitalWrite(PUMP_ON_PIN,HIGH);
+      digitalWrite(PUMP_1_ON_PIN,HIGH);
     }
     else {
       pump_on_condition = 0;
@@ -280,3 +370,60 @@ void setTankLowLevel() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
 }
+
+void debug() {
+  String message = "";
+     message = "";
+    message = "{\"Condition\": ";
+    message += "\""+String(condition)+"\"";
+    message +=",\"Counter\" :";
+    message += "\""+String(water_lavel_count)+"\"";
+    message += ",\"master_status\" :";
+    message += "\""+String(master_status)+"\"";
+    message += ",\"Pump1 Pin Status\" :";
+    message += "\""+String(digitalRead(PUMP_1_ON_PIN))+"\"";
+    message +=",\"Pump On Condition\" : ";
+    message += "\""+String(pump_on_condition)+"\"";
+    message += ",\"Master Control\" :";
+    message += "\""+String(master_pump_on)+"\"";
+    message += ",\"Pump2 Pin Status\" :";
+    message += "\""+String(digitalRead(PUMP_2_ON_PIN))+"\"";
+    message += ",\"Pump Controll Mode\" :";
+    message += "\""+String(pump_controll_mode)+"\"";
+    message += ",\"Select Pump\" :";
+    message += "\""+String(select_pump)+"\"";
+    message += ",\"Pump Start Height\" :";
+    message += "\""+String(pump_start_height)+"\"";
+    message += ",\"Last Pump On\" :";
+    message += "\""+String(last_pump_on)+"\"";    
+    message += " }";
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "text/plain", message);
+}
+
+void setPumpControllMode() {
+    String message = "";
+  if(server.arg("pump_mode") == "" || server.arg("select_pump") == "") {
+    message = "{'err_msg' : 'Invalid Data'}";
+  }
+  else {
+    String post_pump_mode = "";
+    String post_select_pump = "";
+    int pump_mode = 0;
+    int int_select_pump = 0;
+    byte data;
+    post_pump_mode = server.arg("pump_mode");
+    pump_mode = post_pump_mode.toInt();
+
+    post_select_pump = server.arg("select_pump");
+    int_select_pump = post_select_pump.toInt();
+    int pump_controll_mode_address = 2;
+    EEPROM.write(pump_controll_mode_address, pump_mode);
+    EEPROM.write(select_pump_address, int_select_pump);
+    EEPROM.commit();
+    message = "{'success' : '1'}"; 
+  }
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "text/plain", message);
+}
+
