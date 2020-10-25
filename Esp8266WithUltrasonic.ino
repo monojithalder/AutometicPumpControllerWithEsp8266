@@ -14,18 +14,26 @@ IPAddress subnet(255, 255, 255, 0);
 
 long duration;
 int distance;
+
 int high_level_addr = 20;
 int low_level_addr = 40;
 int master_control_addr = 3;
+int pump_controll_mode_address = 2;
+int select_pump_address = 4;
+int time_address= 50;
+
 int high_level = 0;
 int low_level  = 0;
 int pump_controll_mode = 0;
 int select_pump = 0;
-int pump_controll_mode_address = 2;
-int select_pump_address = 4;
 int pump_start_height = 0;
 int last_pump_on = 1;
 int check_water_counter = 0;
+int else_part_distance = 0;
+String pump_mode_condition = "";
+int water_check_condition = 0;
+long current_time = 0;
+
 
 #define TRIGGERPIN D1
 #define ECHOPIN    D2
@@ -130,9 +138,9 @@ void loop() {
   if(master_pump_on == 255) {
     master_pump_on = 0;
   }
-  Serial.println("Low Level: "+ String(low_level));
-  Serial.println("High Level: "+ String(high_level));
-  Serial.print(high_level);
+  //Serial.println("Low Level: "+ String(low_level));
+  //Serial.println("High Level: "+ String(high_level));
+  //Serial.print(high_level);
 
   pump_controll_mode = EEPROM.read(pump_controll_mode_address);
   select_pump = EEPROM.read(select_pump_address);
@@ -144,22 +152,56 @@ void loop() {
     select_pump = 1;
   }
   
+
+  if(pump_controll_mode == 2) {
+      current_time = EEPROMReadlong(time_address);
+      if(current_time == -1) {
+        EEPROMWritelong(time_address,millis());
+      }
+      //Serial.println("Time is: "+String(current_time));
+      //Serial.println("Current Time: "+String(millis()));
+      //EEPROMWritelong(time_address,millis());
+      long temp_time = current_time + 86400000;
+      //Check for 24 hours
+      if(temp_time < millis()) {
+        EEPROMWritelong(time_address,millis());
+        Serial.println("30 Secound is passed");
+        if(last_pump_on == 1) {
+          last_pump_on = 2;
+          pump_mode_condition = "Mode 2 Condition Last Pump 1 Condition";
+        }
+        else if(last_pump_on == 2) {
+          last_pump_on = 1;
+          pump_mode_condition = "Mode 2 Condition Last Pump 2 Condition";
+        }
+      }
+  }
+  
   //get resever water lavel
   reserver_water_lavel = digitalRead(RESERVER_INPUT);
-  if(check_water_counter >= 200) {
+  if(check_water_counter >= 100) {
     check_water_counter = 0;
-    if(distance ==  pump_start_height || distance > pump_start_height) {
+    if(distance ==  pump_start_height || distance > pump_start_height || distance >= (pump_start_height-5)) {
+      water_check_condition = 1;
       if(pump_controll_mode == 2) {
-        if(select_pump == 1) {
-          select_pump = 2;
+        pump_mode_condition = "Mode 2 Condition";
+        if(last_pump_on == 1) {
+          last_pump_on = 2;
+          pump_mode_condition = "Mode 2 Condition Last Pump 1 Condition";
         }
-        if(select_pump == 2) {
-          select_pump = 1;
+        else if(last_pump_on == 2) {
+          last_pump_on = 1;
+          pump_mode_condition = "Mode 2 Condition Last Pump 2 Condition";
         }
       }
       else {
+        pump_mode_condition = "Mode 1 Condition";
         pump_on_condition = 0;
+        water_lavel_count = 0;
       }
+    }
+    else {
+      water_check_condition = 0;
     }
   }
   
@@ -192,21 +234,20 @@ void loop() {
           if(pump_start_height == 0) {
             pump_start_height = distance;
           }
-          last_pump_on = 2;
+          //last_pump_on = 2;
         }
-        if(last_pump_on == 2) {
+        else if(last_pump_on == 2) {
           digitalWrite(PUMP_1_ON_PIN,HIGH);
           digitalWrite(PUMP_2_ON_PIN,LOW);
           if(pump_start_height == 0) {
             pump_start_height = distance;
           }
-          last_pump_on = 1;
+          //last_pump_on = 1;
         }
       }
       //digitalWrite(PUMP_1_ON_PIN,HIGH);
     }
     else {
-      master_status = 2;
       digitalWrite(PUMP_1_ON_PIN,LOW);
       digitalWrite(PUMP_2_ON_PIN,LOW);
       pump_start_height = 0;
@@ -216,14 +257,16 @@ void loop() {
   if(distance > low_level && reserver_water_lavel == 0) {
     //Serial.print("IF Part");
     condition = "IF Part";
+    else_part_distance = distance;
     water_lavel_count++;
     if(water_lavel_count > 100) {
       pump_on_condition = 1;
     }
   }
-  if(distance < high_level || reserver_water_lavel == 1) {
+  if((distance < high_level || reserver_water_lavel == 1) && distance != 0) {
     //Serial.print("ELSE part");
     condition = "ELSE Part";
+    else_part_distance = distance;
     pump_on_condition = 0;
     water_lavel_count = 0;
   }
@@ -395,8 +438,21 @@ void debug() {
     message += ",\"Pump Start Height\" :";
     message += "\""+String(pump_start_height)+"\"";
     message += ",\"Last Pump On\" :";
-    message += "\""+String(last_pump_on)+"\"";    
+    message += "\""+String(last_pump_on)+"\"";  
+    message += ",\"else_part_distance\" :";
+    message += "\""+String(else_part_distance)+"\"";
+    message += ",\"High Level\" :";
+    message += "\""+String(high_level)+"\""; 
+    message += ",\"Low Level\" :";
+    message += "\""+String(low_level)+"\"";  
+    message += ",\"check_water_counter\" :";
+    message += "\""+String(check_water_counter)+"\""; 
+    message += ",\"pump_mode_condition\" :";
+    message += "\""+String(pump_mode_condition)+"\"";
+    message += ",\"water_check_condition\" :";
+    message += "\""+String(water_check_condition)+"\"";      
     message += " }";
+    
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
 }
@@ -425,5 +481,30 @@ void setPumpControllMode() {
   }
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
+}
+
+long EEPROMReadlong(long address) {
+  long four = EEPROM.read(address);
+  long three = EEPROM.read(address + 1);
+  long two = EEPROM.read(address + 2);
+  long one = EEPROM.read(address + 3);
+  /*Serial.println("One: "+String(one));
+  Serial.println("Two: "+String(two));
+  Serial.println("Three: "+String(three));
+  Serial.println("Four: "+String(four));*/
+ 
+  return ((four << 0) & 0xFF) + ((three << 8) & 0xFFFF) + ((two << 16) & 0xFFFFFF) + ((one << 24) & 0xFFFFFFFF);
+}
+
+void EEPROMWritelong(int address, long value) {
+  byte four = (value & 0xFF);
+  byte three = ((value >> 8) & 0xFF);
+  byte two = ((value >> 16) & 0xFF);
+  byte one = ((value >> 24) & 0xFF);
+ 
+  EEPROM.write(address, four);
+  EEPROM.write(address + 1, three);
+  EEPROM.write(address + 2, two);
+  EEPROM.write(address + 3, one);
 }
 
