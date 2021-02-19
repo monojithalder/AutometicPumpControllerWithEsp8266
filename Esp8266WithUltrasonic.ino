@@ -35,11 +35,11 @@ int water_check_condition = 0;
 long current_time = 0;
 
 
-#define TRIGGERPIN D1
-#define ECHOPIN    D2
-#define RESERVER_INPUT D6
-#define PUMP_1_ON_PIN D5
-#define PUMP_2_ON_PIN D7
+#define TRIGGERPIN 5
+#define ECHOPIN    4
+#define RESERVER_INPUT 12
+#define PUMP_1_ON_PIN 14
+#define PUMP_2_ON_PIN 13
 
 int master_pump_on;
 int pump_on_condition = 0;
@@ -213,6 +213,7 @@ void loop() {
       master_status =1;
       if(pump_controll_mode == 1) {
         if(select_pump == 1) {
+          Serial.println("Pump 1 is On");
           digitalWrite(PUMP_1_ON_PIN,HIGH);
           digitalWrite(PUMP_2_ON_PIN,LOW);
           if(pump_start_height == 0) {
@@ -220,6 +221,7 @@ void loop() {
           }
         }
         if(select_pump == 2) {
+          Serial.println("Pump 2 is On");
           digitalWrite(PUMP_2_ON_PIN,HIGH);
           digitalWrite(PUMP_1_ON_PIN,LOW);
           if(pump_start_height == 0) {
@@ -229,6 +231,7 @@ void loop() {
       }
       if(pump_controll_mode == 2) {
         if(last_pump_on == 1) {
+          Serial.println("Pump 2 is On");
           digitalWrite(PUMP_2_ON_PIN,HIGH);
           digitalWrite(PUMP_1_ON_PIN,LOW);
           if(pump_start_height == 0) {
@@ -237,6 +240,7 @@ void loop() {
           //last_pump_on = 2;
         }
         else if(last_pump_on == 2) {
+          Serial.println("Pump 1 is On");
           digitalWrite(PUMP_1_ON_PIN,HIGH);
           digitalWrite(PUMP_2_ON_PIN,LOW);
           if(pump_start_height == 0) {
@@ -507,4 +511,3 @@ void EEPROMWritelong(int address, long value) {
   EEPROM.write(address + 2, two);
   EEPROM.write(address + 3, one);
 }
-
