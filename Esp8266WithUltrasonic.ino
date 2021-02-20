@@ -62,7 +62,6 @@ void setup() {
 
   //Initialize Server
   server.on("/status", handleStatus);
-  server.on("/processRequest",processRequest);
   server.on("/masterControl",masterControl);
   server.on("/waterLavel",waterLavel);
   server.on("/setTankHighLevel",setTankHighLevel);
@@ -83,18 +82,13 @@ void setup() {
   
   Serial.begin(9600);
   EEPROM.begin(512);
-  pump_controll_mode = EEPROM.read(pump_controll_mode_address);
-  select_pump = EEPROM.read(select_pump_address);
-  if(pump_controll_mode == 255 || pump_controll_mode == 0) {
-     pump_controll_mode = 1;
-  }
+  eepromOperations();
+  setupOTA();
 
-  if(select_pump == 255 || pump_controll_mode == 0) {
-    select_pump = 1;
-  }
-  
+}
+
+void setupOTA() {
   /**OTA CODE START **/
-
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
   });
@@ -120,52 +114,31 @@ void setup() {
 }
 
 void loop() {
+  eepromOperations();
+  getWaterLevel();
+  selectPump();
+  //get resever water lavel
+  reserver_water_lavel = digitalRead(RESERVER_INPUT);
+  pumpOnOffCondition();
+  pumpOn();
   ArduinoOTA.handle();
-  digitalWrite(TRIGGERPIN, LOW);  
-  delayMicroseconds(3); 
-  
-  digitalWrite(TRIGGERPIN, HIGH);
-  delayMicroseconds(12); 
-  
-  digitalWrite(TRIGGERPIN, LOW);
-  duration = pulseIn(ECHOPIN, HIGH);
-  distance= duration*0.034/2;
 
+  delay(1000);
+  server.handleClient();
+}
 
-  low_level  = EEPROM.read(low_level_addr);
-  high_level = EEPROM.read(high_level_addr);
-  master_pump_on = EEPROM.read(master_control_addr);
-  if(master_pump_on == 255) {
-    master_pump_on = 0;
-  }
-  //Serial.println("Low Level: "+ String(low_level));
-  //Serial.println("High Level: "+ String(high_level));
-  //Serial.print(high_level);
+/********** Start Loop Function Block **********/
 
-  pump_controll_mode = EEPROM.read(pump_controll_mode_address);
-  select_pump = EEPROM.read(select_pump_address);
-  if(pump_controll_mode == 255 || pump_controll_mode == 0) {
-     pump_controll_mode = 1;
-  }
-
-  if(select_pump == 255 || pump_controll_mode == 0) {
-    select_pump = 1;
-  }
-  
-
-  if(pump_controll_mode == 2) {
+void selectPump() {
+    if(pump_controll_mode == 2) {
       current_time = EEPROMReadlong(time_address);
       if(current_time == -1) {
         EEPROMWritelong(time_address,millis());
       }
-      //Serial.println("Time is: "+String(current_time));
-      //Serial.println("Current Time: "+String(millis()));
-      //EEPROMWritelong(time_address,millis());
       long temp_time = current_time + 86400000;
       //Check for 24 hours
       if(temp_time < millis()) {
         EEPROMWritelong(time_address,millis());
-        Serial.println("30 Secound is passed");
         if(last_pump_on == 1) {
           last_pump_on = 2;
           pump_mode_condition = "Mode 2 Condition Last Pump 1 Condition";
@@ -176,36 +149,27 @@ void loop() {
         }
       }
   }
-  
-  //get resever water lavel
-  reserver_water_lavel = digitalRead(RESERVER_INPUT);
-  if(check_water_counter >= 100) {
-    check_water_counter = 0;
-    if(distance ==  pump_start_height || distance > pump_start_height || distance >= (pump_start_height-5)) {
-      water_check_condition = 1;
-      if(pump_controll_mode == 2) {
-        pump_mode_condition = "Mode 2 Condition";
-        if(last_pump_on == 1) {
-          last_pump_on = 2;
-          pump_mode_condition = "Mode 2 Condition Last Pump 1 Condition";
-        }
-        else if(last_pump_on == 2) {
-          last_pump_on = 1;
-          pump_mode_condition = "Mode 2 Condition Last Pump 2 Condition";
-        }
-      }
-      else {
-        pump_mode_condition = "Mode 1 Condition";
-        pump_on_condition = 0;
-        water_lavel_count = 0;
-      }
-    }
-    else {
-      water_check_condition = 0;
+}
+
+void pumpOnOffCondition() {
+    if(distance > low_level && reserver_water_lavel == 0) {
+    condition = "IF Part";
+    else_part_distance = distance;
+    water_lavel_count++;
+    if(water_lavel_count > 100) {
+      pump_on_condition = 1;
     }
   }
-  
-  //check is master pump status
+  if((distance < high_level || reserver_water_lavel == 1) && distance != 0) {
+    condition = "ELSE Part";
+    else_part_distance = distance;
+    pump_on_condition = 0;
+    water_lavel_count = 0;
+  }
+}
+
+void pumpOn() {
+    //check is master pump status
   if(master_pump_on == 1) {
     if(pump_on_condition == 1) {
       check_water_counter++;
@@ -237,7 +201,6 @@ void loop() {
           if(pump_start_height == 0) {
             pump_start_height = distance;
           }
-          //last_pump_on = 2;
         }
         else if(last_pump_on == 2) {
           Serial.println("Pump 1 is On");
@@ -246,10 +209,8 @@ void loop() {
           if(pump_start_height == 0) {
             pump_start_height = distance;
           }
-          //last_pump_on = 1;
         }
       }
-      //digitalWrite(PUMP_1_ON_PIN,HIGH);
     }
     else {
       digitalWrite(PUMP_1_ON_PIN,LOW);
@@ -258,28 +219,52 @@ void loop() {
       check_water_counter = 0;
     }
   }
-  if(distance > low_level && reserver_water_lavel == 0) {
-    //Serial.print("IF Part");
-    condition = "IF Part";
-    else_part_distance = distance;
-    water_lavel_count++;
-    if(water_lavel_count > 100) {
-      pump_on_condition = 1;
+}
+
+void pumpSafety() {
+    if(check_water_counter >= 100) {
+    check_water_counter = 0;
+    if(distance ==  pump_start_height || distance > pump_start_height || distance >= (pump_start_height-5)) {
+      water_check_condition = 1;
+      if(pump_controll_mode == 2) {
+        pump_mode_condition = "Mode 2 Condition";
+        if(last_pump_on == 1) {
+          last_pump_on = 2;
+          pump_mode_condition = "Mode 2 Condition Last Pump 1 Condition";
+        }
+        else if(last_pump_on == 2) {
+          last_pump_on = 1;
+          pump_mode_condition = "Mode 2 Condition Last Pump 2 Condition";
+        }
+      }
+      else {
+        pump_mode_condition = "Mode 1 Condition";
+        pump_on_condition = 0;
+        water_lavel_count = 0;
+      }
+    }
+    else {
+      water_check_condition = 0;
     }
   }
-  if((distance < high_level || reserver_water_lavel == 1) && distance != 0) {
-    //Serial.print("ELSE part");
-    condition = "ELSE Part";
-    else_part_distance = distance;
-    pump_on_condition = 0;
-    water_lavel_count = 0;
-  }
-  //Serial.println("TESTing");
-  //Serial.print("Count: ");
-  //Serial.println(water_lavel_count);
-  delay(1000);
-  server.handleClient();
 }
+
+void getWaterLevel() {
+  digitalWrite(TRIGGERPIN, LOW);  
+  delayMicroseconds(3); 
+  
+  digitalWrite(TRIGGERPIN, HIGH);
+  delayMicroseconds(12); 
+  
+  digitalWrite(TRIGGERPIN, LOW);
+  duration = pulseIn(ECHOPIN, HIGH);
+  distance= duration*0.034/2;
+}
+
+
+/********** End Loop Function Block **********/
+
+/********** Start Manual Function Block **********/
 
 //This method is used for return pin status
 void handleStatus() {
@@ -311,32 +296,21 @@ void handleStatus() {
   server.send(200, "text/plain",message); 
 }
 
-//This method is used to On/Off pin as per request
-void processRequest() {
+void waterLavel() {
   String message = "";
-  if(server.arg("item_no") == "") {
-    message = "{'err_msg' : 'Invalid Item No'}";
-  }
-  else {
-    String post_data_string = "";
-    char post_data_char[2];
-    int post_data = 0;
-    char pin_status = '0';
-    post_data_string = server.arg("item_no");
-    post_data_string.toCharArray(post_data_char,2);
-    post_data = atoi(post_data_char);
-    if(post_data == 1) {
-      pump_on_condition = 1;
-      digitalWrite(PUMP_1_ON_PIN,HIGH);
-    }
-    else {
-      pump_on_condition = 0;
-    }
-    message = "{'success' : '1'}"; 
-  }
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.send(200, "text/plain", message);
+   message = "";
+    message = "{'water_level': ";
+    message += distance;
+    message += " }";
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    
+    server.send(200, "text/plain", message);
 }
+
+
+/********** End Manual Function Block **********/
+
+/********** Start Settings Function Block **********/
 
 //This method is used for permanent off/on master switch
 void masterControl() {
@@ -364,17 +338,6 @@ void masterControl() {
   }
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
-}
-
-void waterLavel() {
-  String message = "";
-   message = "";
-    message = "{'water_level': ";
-    message += distance;
-    message += " }";
-    server.sendHeader("Access-Control-Allow-Origin", "*");
-    
-    server.send(200, "text/plain", message);
 }
 
 void setTankHighLevel() {
@@ -417,6 +380,90 @@ void setTankLowLevel() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
 }
+
+void setPumpControllMode() {
+    String message = "";
+  if(server.arg("pump_mode") == "" || server.arg("select_pump") == "") {
+    message = "{'err_msg' : 'Invalid Data'}";
+  }
+  else {
+    String post_pump_mode = "";
+    String post_select_pump = "";
+    int pump_mode = 0;
+    int int_select_pump = 0;
+    byte data;
+    post_pump_mode = server.arg("pump_mode");
+    pump_mode = post_pump_mode.toInt();
+
+    post_select_pump = server.arg("select_pump");
+    int_select_pump = post_select_pump.toInt();
+    int pump_controll_mode_address = 2;
+    EEPROM.write(pump_controll_mode_address, pump_mode);
+    EEPROM.write(select_pump_address, int_select_pump);
+    EEPROM.commit();
+    message = "{'success' : '1'}"; 
+  }
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "text/plain", message);
+}
+
+/********** End Settings Function Block **********/
+
+/********** Start EEPROM Function Block **********/
+
+long EEPROMReadlong(long address) {
+  long four = EEPROM.read(address);
+  long three = EEPROM.read(address + 1);
+  long two = EEPROM.read(address + 2);
+  long one = EEPROM.read(address + 3);
+ 
+  return ((four << 0) & 0xFF) + ((three << 8) & 0xFFFF) + ((two << 16) & 0xFFFFFF) + ((one << 24) & 0xFFFFFFFF);
+}
+
+void EEPROMWritelong(int address, long value) {
+  byte four = (value & 0xFF);
+  byte three = ((value >> 8) & 0xFF);
+  byte two = ((value >> 16) & 0xFF);
+  byte one = ((value >> 24) & 0xFF);
+ 
+  EEPROM.write(address, four);
+  EEPROM.write(address + 1, three);
+  EEPROM.write(address + 2, two);
+  EEPROM.write(address + 3, one);
+}
+
+void eepromOperations() {
+  pump_controll_mode = EEPROM.read(pump_controll_mode_address);
+  select_pump = EEPROM.read(select_pump_address);
+  if(pump_controll_mode == 255 || pump_controll_mode == 0) {
+     pump_controll_mode = 1;
+  }
+
+  if(select_pump == 255 || pump_controll_mode == 0) {
+    select_pump = 1;
+  }
+
+  low_level  = EEPROM.read(low_level_addr);
+  high_level = EEPROM.read(high_level_addr);
+  master_pump_on = EEPROM.read(master_control_addr);
+  if(master_pump_on == 255) {
+    master_pump_on = 0;
+  }
+
+  pump_controll_mode = EEPROM.read(pump_controll_mode_address);
+  select_pump = EEPROM.read(select_pump_address);
+  if(pump_controll_mode == 255 || pump_controll_mode == 0) {
+     pump_controll_mode = 1;
+  }
+
+  if(select_pump == 255 || pump_controll_mode == 0) {
+    select_pump = 1;
+  }
+}
+
+/********** End EEPROM Function Block **********/
+
+/********** Start Debug Function Block **********/
 
 void debug() {
   String message = "";
@@ -461,53 +508,4 @@ void debug() {
   server.send(200, "text/plain", message);
 }
 
-void setPumpControllMode() {
-    String message = "";
-  if(server.arg("pump_mode") == "" || server.arg("select_pump") == "") {
-    message = "{'err_msg' : 'Invalid Data'}";
-  }
-  else {
-    String post_pump_mode = "";
-    String post_select_pump = "";
-    int pump_mode = 0;
-    int int_select_pump = 0;
-    byte data;
-    post_pump_mode = server.arg("pump_mode");
-    pump_mode = post_pump_mode.toInt();
-
-    post_select_pump = server.arg("select_pump");
-    int_select_pump = post_select_pump.toInt();
-    int pump_controll_mode_address = 2;
-    EEPROM.write(pump_controll_mode_address, pump_mode);
-    EEPROM.write(select_pump_address, int_select_pump);
-    EEPROM.commit();
-    message = "{'success' : '1'}"; 
-  }
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.send(200, "text/plain", message);
-}
-
-long EEPROMReadlong(long address) {
-  long four = EEPROM.read(address);
-  long three = EEPROM.read(address + 1);
-  long two = EEPROM.read(address + 2);
-  long one = EEPROM.read(address + 3);
-  /*Serial.println("One: "+String(one));
-  Serial.println("Two: "+String(two));
-  Serial.println("Three: "+String(three));
-  Serial.println("Four: "+String(four));*/
- 
-  return ((four << 0) & 0xFF) + ((three << 8) & 0xFFFF) + ((two << 16) & 0xFFFFFF) + ((one << 24) & 0xFFFFFFFF);
-}
-
-void EEPROMWritelong(int address, long value) {
-  byte four = (value & 0xFF);
-  byte three = ((value >> 8) & 0xFF);
-  byte two = ((value >> 16) & 0xFF);
-  byte one = ((value >> 24) & 0xFF);
- 
-  EEPROM.write(address, four);
-  EEPROM.write(address + 1, three);
-  EEPROM.write(address + 2, two);
-  EEPROM.write(address + 3, one);
-}
+/********** End Debug Function Block **********/
