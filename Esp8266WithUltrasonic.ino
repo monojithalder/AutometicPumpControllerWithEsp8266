@@ -29,7 +29,6 @@ int select_pump = 0;
 int pump_start_height = 0;
 int last_pump_on = 1;
 int check_water_counter = 0;
-int else_part_distance = 0;
 String pump_mode_condition = "";
 int water_check_condition = 0;
 long current_time = 0;
@@ -154,7 +153,6 @@ void selectPump() {
 void pumpOnOffCondition() {
     if(distance > low_level && reserver_water_lavel == 0) {
     condition = "IF Part";
-    else_part_distance = distance;
     water_lavel_count++;
     if(water_lavel_count > 100) {
       pump_on_condition = 1;
@@ -162,7 +160,6 @@ void pumpOnOffCondition() {
   }
   if((distance < high_level || reserver_water_lavel == 1) && distance != 0) {
     condition = "ELSE Part";
-    else_part_distance = distance;
     pump_on_condition = 0;
     water_lavel_count = 0;
   }
@@ -467,41 +464,29 @@ void eepromOperations() {
 
 void debug() {
   String message = "";
-     message = "";
-    message = "{\"Condition\": ";
-    message += "\""+String(condition)+"\"";
-    message +=",\"Counter\" :";
-    message += "\""+String(water_lavel_count)+"\"";
-    message += ",\"master_status\" :";
-    message += "\""+String(master_status)+"\"";
-    message += ",\"Pump1 Pin Status\" :";
-    message += "\""+String(digitalRead(PUMP_1_ON_PIN))+"\"";
-    message +=",\"Pump On Condition\" : ";
-    message += "\""+String(pump_on_condition)+"\"";
-    message += ",\"Master Control\" :";
-    message += "\""+String(master_pump_on)+"\"";
-    message += ",\"Pump2 Pin Status\" :";
-    message += "\""+String(digitalRead(PUMP_2_ON_PIN))+"\"";
-    message += ",\"Pump Controll Mode\" :";
-    message += "\""+String(pump_controll_mode)+"\"";
-    message += ",\"Select Pump\" :";
-    message += "\""+String(select_pump)+"\"";
-    message += ",\"Pump Start Height\" :";
-    message += "\""+String(pump_start_height)+"\"";
-    message += ",\"Last Pump On\" :";
-    message += "\""+String(last_pump_on)+"\"";  
-    message += ",\"else_part_distance\" :";
-    message += "\""+String(else_part_distance)+"\"";
-    message += ",\"High Level\" :";
-    message += "\""+String(high_level)+"\""; 
-    message += ",\"Low Level\" :";
-    message += "\""+String(low_level)+"\"";  
-    message += ",\"check_water_counter\" :";
-    message += "\""+String(check_water_counter)+"\""; 
-    message += ",\"pump_mode_condition\" :";
-    message += "\""+String(pump_mode_condition)+"\"";
-    message += ",\"water_check_condition\" :";
-    message += "\""+String(water_check_condition)+"\"";      
+    message = "";
+    message = "{\"Condition\": \"" + String(condition) + "\"";
+    message +=",\"Counter\" : \"" + String(water_lavel_count) + "\"";
+    message += ",\"Master Status\" : \"" + String(master_status) + "\"";
+    message += ",\"Pump1 Pin Status\" : \"" + String(digitalRead(PUMP_1_ON_PIN)) + "\"";
+    message +=",\"Pump On Condition\" : \"" + String(pump_on_condition) +"\"";
+    message += ",\"Master Control\" : \"" + String(master_pump_on) + "\"";
+    message += ",\"Pump2 Pin Status\" : \"" + String(digitalRead(PUMP_2_ON_PIN)) + "\"";
+    message += ",\"Pump Controll Mode\" : \"" + String(pump_controll_mode) + "\"";
+    message += ",\"Select Pump\" : \"" + String(select_pump) + "\"";
+    message += ",\"Pump Start Height\" : \"" + String(pump_start_height) + "\"";
+    message += ",\"Last Pump On\" : \"" + String(last_pump_on) + "\"";  
+    message += ",\"High Level\" : \"" + String(high_level) + "\"";
+    message += ",\"Low Level\" : \"" + String(low_level) + "\""; 
+    message += ",\"check_water_counter\" : \"" + String(check_water_counter) + "\"";
+    message += ",\"pump_mode_condition\" : \"" + String(pump_mode_condition) + "\"";
+    message += ",\"Water Check Condition\" : \"" + String(water_check_condition) + "\"";
+    message += "\"Current Time\" : \"" + String(current_time) +"\"";      
+    message += "\"Current Time +24h\" : \"" + String((current_time + 86400000)) +"\"";
+    message += "\"Millis\" : \"" + String(millis()) +"\"";
+    message += "\"Last Pump On\" : \"" + String(last_pump_on) +"\"";
+    message += "\"Reserver Level\" : \"" + String(reserver_water_lavel) +"\"";
+    message += "\"Reserver Level\" : \"" + String(reserver_water_lavel) +"\"";
     message += " }";
     
   server.sendHeader("Access-Control-Allow-Origin", "*");
