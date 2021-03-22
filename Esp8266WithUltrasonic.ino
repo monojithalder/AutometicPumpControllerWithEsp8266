@@ -4,6 +4,9 @@
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
+#include <SoftwareSerial.h>
 
 const char* ssid     = "Monojit_Airtel";
 const char* password = "web2013techlink";
@@ -21,18 +24,23 @@ int master_control_addr = 3;
 int pump_controll_mode_address = 2;
 int select_pump_address = 4;
 int time_address= 50;
+int server_ip_addr = 51;
+int current_pump_address = 65;
 
+int pump_on_request = 0;
+int pump_off_request = 0;
 int high_level = 0;
 int low_level  = 0;
 int pump_controll_mode = 0;
 int select_pump = 0;
 int pump_start_height = 0;
 int last_pump_on = 1;
+int current_selected_pump = 1;
 int check_water_counter = 0;
-String pump_mode_condition = "";
 int water_check_condition = 0;
 long current_time = 0;
-
+String pump_mode_condition = "";
+String server_ip = "";
 
 #define TRIGGERPIN 5
 #define ECHOPIN    4
@@ -61,11 +69,14 @@ void setup() {
 
   //Initialize Server
   server.on("/status", handleStatus);
-  server.on("/masterControl",masterControl);
+  server.on("/setMasterControl",masterControl);
+  server.on("/getMasterControl",getMasterControl);
   server.on("/waterLavel",waterLavel);
   server.on("/setTankHighLevel",setTankHighLevel);
   server.on("/setTankLowLevel",setTankLowLevel);
   server.on("/set-pump-controll-mode",setPumpControllMode);
+  server.on("/selectPump",selectPump);
+  server.on("/setServerIp",setServerIp);
   server.on("/debug",debug);
   server.begin();
   delay(500);
@@ -115,7 +126,6 @@ void setupOTA() {
 void loop() {
   eepromOperations();
   getWaterLevel();
-  selectPump();
   //get resever water lavel
   reserver_water_lavel = digitalRead(RESERVER_INPUT);
   pumpOnOffCondition();
@@ -129,38 +139,36 @@ void loop() {
 /********** Start Loop Function Block **********/
 
 void selectPump() {
-    if(pump_controll_mode == 2) {
-      current_time = EEPROMReadlong(time_address);
-      if(current_time == -1) {
-        EEPROMWritelong(time_address,millis());
-      }
-      long temp_time = current_time + 86400000;
-      //Check for 24 hours
-      if(temp_time < millis()) {
-        EEPROMWritelong(time_address,millis());
-        if(last_pump_on == 1) {
-          last_pump_on = 2;
-          pump_mode_condition = "Mode 2 Condition Last Pump 1 Condition";
-        }
-        else if(last_pump_on == 2) {
-          last_pump_on = 1;
-          pump_mode_condition = "Mode 2 Condition Last Pump 2 Condition";
-        }
-      }
-  }
+    String post_data_string;
+    int post_data;
+    char post_data_char[2];
+    post_data_string = server.arg("select_pump");
+    post_data_string.toCharArray(post_data_char,2);
+    post_data = atoi(post_data_char);
+    current_selected_pump = post_data;
+    EEPROM.write(current_pump_address, current_selected_pump);
+    EEPROM.commit();
+    String message;
+    message += "{\"success\" : \"1\"}";
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "text/plain",message); 
 }
 
 void pumpOnOffCondition() {
-    if(distance > low_level && reserver_water_lavel == 0) {
+  if(distance > low_level && reserver_water_lavel == 0) {
     condition = "IF Part";
     water_lavel_count++;
     if(water_lavel_count > 100) {
       pump_on_condition = 1;
     }
   }
-  if((distance < high_level || reserver_water_lavel == 1) && distance != 0) {
+  else if((distance < high_level || reserver_water_lavel == 1) && distance != 0) {
     condition = "ELSE Part";
     pump_on_condition = 0;
+    water_lavel_count = 0;
+  }
+  else {
+    condition = "";
     water_lavel_count = 0;
   }
 }
@@ -180,6 +188,11 @@ void pumpOn() {
           if(pump_start_height == 0) {
             pump_start_height = distance;
           }
+          if(pump_on_request == 0) {
+            updatePumpStatus(1,pump_start_height);
+            pump_on_request = 1;
+            pump_off_request = 0;
+          }
         }
         if(select_pump == 2) {
           Serial.println("Pump 2 is On");
@@ -188,23 +201,38 @@ void pumpOn() {
           if(pump_start_height == 0) {
             pump_start_height = distance;
           }
+          if(pump_on_request == 0) {
+            updatePumpStatus(1,pump_start_height);
+            pump_on_request = 1;
+            pump_off_request = 0;
+          }
         }
       }
       if(pump_controll_mode == 2) {
-        if(last_pump_on == 1) {
+        if(current_selected_pump == 1) {
           Serial.println("Pump 2 is On");
-          digitalWrite(PUMP_2_ON_PIN,HIGH);
-          digitalWrite(PUMP_1_ON_PIN,LOW);
+          digitalWrite(PUMP_2_ON_PIN,LOW);
+          digitalWrite(PUMP_1_ON_PIN,HIGH);
           if(pump_start_height == 0) {
             pump_start_height = distance;
           }
+          if(pump_on_request == 0) {
+            updatePumpStatus(1,pump_start_height);
+            pump_on_request = 1;
+            pump_off_request = 0;
+          }
         }
-        else if(last_pump_on == 2) {
+        else if(current_selected_pump == 2) {
           Serial.println("Pump 1 is On");
-          digitalWrite(PUMP_1_ON_PIN,HIGH);
-          digitalWrite(PUMP_2_ON_PIN,LOW);
+          digitalWrite(PUMP_1_ON_PIN,LOW);
+          digitalWrite(PUMP_2_ON_PIN,HIGH);
           if(pump_start_height == 0) {
             pump_start_height = distance;
+          }
+          if(pump_on_request == 0) {
+            updatePumpStatus(1,pump_start_height);
+            pump_on_request = 1;
+            pump_off_request = 0;
           }
         }
       }
@@ -214,6 +242,11 @@ void pumpOn() {
       digitalWrite(PUMP_2_ON_PIN,LOW);
       pump_start_height = 0;
       check_water_counter = 0;
+      if(pump_off_request == 0 && pump_on_request == 1) {
+        updatePumpStatus(0,distance);
+        pump_off_request = 1;
+        pump_on_request = 0;
+      }
     }
   }
 }
@@ -255,9 +288,25 @@ void getWaterLevel() {
   
   digitalWrite(TRIGGERPIN, LOW);
   duration = pulseIn(ECHOPIN, HIGH);
-  distance= duration*0.034/2;
+  int temp_distance = duration*0.034/2;
+  if(temp_distance != 0) {
+    distance= temp_distance; 
+  }
 }
 
+void updatePumpStatus(int pump_status,int water_level) {
+  WiFiClient client;
+  HTTPClient http;
+  String url;
+  int httpCode;
+  url = "http://" + server_ip + "/room/public/api/pump-status?status=" + String(pump_status) + "&water_level="+ String(water_level) + "&pump=" + String(current_selected_pump);
+    if (http.begin(client, url)) {
+      httpCode = http.GET();
+      if(httpCode == 200) {
+        Serial.println("Updated");    
+      }
+    }
+}
 
 /********** End Loop Function Block **********/
 
@@ -331,8 +380,16 @@ void masterControl() {
     }
     EEPROM.write(master_control_addr, master_pump_on);
     EEPROM.commit();
-    message = "{'success' : '1'}"; 
+    message = "{\"success\" : \"1\"}"; 
   }
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "text/plain", message);
+}
+
+void getMasterControl() {
+  String message = "";
+  int master_control;
+  message = "{\"success\" : \"1\",\"master_control\" : \"" + String(master_pump_on) + "\"}"; 
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
 }
@@ -404,6 +461,20 @@ void setPumpControllMode() {
   server.send(200, "text/plain", message);
 }
 
+void setServerIp() {
+   String post_data_string = "";
+   post_data_string = server.arg("ip");
+   for (int i = 0; i<13; i++) {
+   char c = post_data_string[i];
+   EEPROM.put(server_ip_addr+i,c);
+   EEPROM.commit();
+  }
+  String message;
+  message = "{\"success\" : \"1\"}";
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "text/plain",message); 
+}
+
 /********** End Settings Function Block **********/
 
 /********** Start EEPROM Function Block **********/
@@ -440,6 +511,12 @@ void eepromOperations() {
     select_pump = 1;
   }
 
+
+  current_selected_pump = EEPROM.read(current_pump_address);
+  if(current_selected_pump == 255 || current_selected_pump == 0) {
+    current_selected_pump = 1;
+  }
+
   low_level  = EEPROM.read(low_level_addr);
   high_level = EEPROM.read(high_level_addr);
   master_pump_on = EEPROM.read(master_control_addr);
@@ -456,6 +533,16 @@ void eepromOperations() {
   if(select_pump == 255 || pump_controll_mode == 0) {
     select_pump = 1;
   }
+
+  // Get server ip
+  int server_ip_length = 13;
+  char server_ip_char[server_ip_length];
+  for(int i = 0; i<server_ip_length; i++) {
+      server_ip_char[i]= EEPROM.read(server_ip_addr+i);
+  }
+  server_ip_char[server_ip_length] = '\0';
+  server_ip     = server_ip_char;
+  
 }
 
 /********** End EEPROM Function Block **********/
@@ -474,19 +561,21 @@ void debug() {
     message += ",\"Pump2 Pin Status\" : \"" + String(digitalRead(PUMP_2_ON_PIN)) + "\"";
     message += ",\"Pump Controll Mode\" : \"" + String(pump_controll_mode) + "\"";
     message += ",\"Select Pump\" : \"" + String(select_pump) + "\"";
-    message += ",\"Pump Start Height\" : \"" + String(pump_start_height) + "\"";
-    message += ",\"Last Pump On\" : \"" + String(last_pump_on) + "\"";  
+    message += ",\"Pump Start Height\" : \"" + String(pump_start_height) + "\""; 
     message += ",\"High Level\" : \"" + String(high_level) + "\"";
     message += ",\"Low Level\" : \"" + String(low_level) + "\""; 
     message += ",\"check_water_counter\" : \"" + String(check_water_counter) + "\"";
     message += ",\"pump_mode_condition\" : \"" + String(pump_mode_condition) + "\"";
     message += ",\"Water Check Condition\" : \"" + String(water_check_condition) + "\"";
-    message += "\"Current Time\" : \"" + String(current_time) +"\"";      
-    message += "\"Current Time +24h\" : \"" + String((current_time + 86400000)) +"\"";
-    message += "\"Millis\" : \"" + String(millis()) +"\"";
-    message += "\"Last Pump On\" : \"" + String(last_pump_on) +"\"";
-    message += "\"Reserver Level\" : \"" + String(reserver_water_lavel) +"\"";
-    message += "\"Reserver Level\" : \"" + String(reserver_water_lavel) +"\"";
+    message += ",\"Current Time\" : \"" + String(current_time) +"\"";      
+    message += ",\"Current Time +24h\" : \"" + String((current_time + 86400000)) +"\"";
+    message += ",\"Millis\" : \"" + String(millis()) +"\"";
+    message += ",\"Current Selected Pump\" : \"" + String(current_selected_pump) +"\"";
+    message += ",\"Reserver Level\" : \"" + String(reserver_water_lavel) +"\"";
+    message += ",\"Water Level\" : \"" + String(distance) +"\"";
+    message += ",\"Server IP\" : \"" + server_ip +"\"";
+    message += ",\"Pump On Request\" : \"" + String(pump_on_request) +"\"";
+    message += ",\"Pump off Request\" : \"" + String(pump_off_request) +"\"";
     message += " }";
     
   server.sendHeader("Access-Control-Allow-Origin", "*");
