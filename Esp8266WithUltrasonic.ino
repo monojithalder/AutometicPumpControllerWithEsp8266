@@ -6,7 +6,6 @@
 #include <ArduinoOTA.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
-#include <SoftwareSerial.h>
 
 const char* ssid     = "Monojit_Airtel";
 const char* password = "web2013techlink";
