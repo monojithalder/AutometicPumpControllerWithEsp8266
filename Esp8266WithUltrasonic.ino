@@ -76,6 +76,7 @@ void setup() {
   server.on("/set-pump-controll-mode",setPumpControllMode);
   server.on("/selectPump",selectPump);
   server.on("/setServerIp",setServerIp);
+  server.on("/manual-pump-on",manualPumpOn);
   server.on("/debug",debug);
   server.begin();
   delay(500);
@@ -154,14 +155,14 @@ void selectPump() {
 }
 
 void pumpOnOffCondition() {
-  if(distance > low_level && reserver_water_lavel == 0) {
+  if(distance >= low_level && reserver_water_lavel == 0) {
     condition = "IF Part";
     water_lavel_count++;
     if(water_lavel_count > 100) {
       pump_on_condition = 1;
     }
   }
-  else if((distance < high_level || reserver_water_lavel == 1) && distance != 0) {
+  else if(distance <= high_level || reserver_water_lavel == 1) {
     condition = "ELSE Part";
     pump_on_condition = 0;
     water_lavel_count = 0;
@@ -350,6 +351,13 @@ void waterLavel() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     
     server.send(200, "text/plain", message);
+}
+
+void manualPumpOn() {
+  String message = "{\"success\" : \"1\"}";
+  pump_on_condition = 1;
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "text/plain", message);
 }
 
 
