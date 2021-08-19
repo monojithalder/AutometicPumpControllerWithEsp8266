@@ -40,12 +40,20 @@ int water_check_condition = 0;
 long current_time = 0;
 String pump_mode_condition = "";
 String server_ip = "";
+int get_top_level = 1;
+int get_low_level = 1;
+int send_top_level;
+int send_low_level;
+int pump_off_counter = 0;
 
 #define TRIGGERPIN 5
 #define ECHOPIN    4
 #define RESERVER_INPUT 12
 #define PUMP_1_ON_PIN 14
 #define PUMP_2_ON_PIN 13
+#define TOP_LEVEL 16
+#define MIDDLE_LEVEL 1
+#define LOW_LEVEL 3
 
 int master_pump_on;
 int pump_on_condition = 0;
@@ -65,6 +73,10 @@ void setup() {
   pinMode(RESERVER_INPUT,INPUT);
   pinMode(PUMP_1_ON_PIN,OUTPUT);
   pinMode(PUMP_2_ON_PIN,OUTPUT);
+
+  pinMode(TOP_LEVEL,INPUT);
+  //pinMode(MIDDLE_LEVEL,INPUT);
+  pinMode(LOW_LEVEL,INPUT);
 
   //Initialize Server
   server.on("/status", handleStatus);
@@ -90,7 +102,7 @@ void setup() {
   digitalWrite(PUMP_1_ON_PIN,LOW);
   digitalWrite(PUMP_2_ON_PIN,LOW);
   
-  Serial.begin(9600);
+  //Serial.begin(9600);
   EEPROM.begin(512);
   eepromOperations();
   setupOTA();
@@ -100,26 +112,26 @@ void setup() {
 void setupOTA() {
   /**OTA CODE START **/
   ArduinoOTA.onStart([]() {
-    Serial.println("Start");
+    //Serial.println("Start");
   });
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
+    //Serial.println("\nEnd");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    //Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    //Serial.printf("Error[%u]: ", error);
+    /*if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
     else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    else if (error == OTA_CONNECT_ERROR) //Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) //Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) //Serial.println("End Failed");*/
   });
   ArduinoOTA.begin();
-  Serial.println("Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  //Serial.println("Ready");
+  //Serial.print("IP address: ");
+  //Serial.println(WiFi.localIP());
 /** OTA CODE END **/
 }
 
@@ -127,7 +139,7 @@ void loop() {
   eepromOperations();
   getWaterLevel();
   //get resever water lavel
-  reserver_water_lavel = digitalRead(RESERVER_INPUT);
+  reserver_water_lavel = 0;
   pumpOnOffCondition();
   pumpOn();
   ArduinoOTA.handle();
@@ -153,23 +165,31 @@ void selectPump() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.send(200, "text/plain",message); 
 }
-
 void pumpOnOffCondition() {
-  if(distance >= low_level && reserver_water_lavel == 0) {
+  if(get_low_level == 1 && reserver_water_lavel == 0) {
     condition = "IF Part";
     water_lavel_count++;
     if(water_lavel_count > 100) {
       pump_on_condition = 1;
+      send_low_level = get_low_level;
+      send_top_level = get_top_level;
     }
   }
-  else if(distance <= high_level || reserver_water_lavel == 1) {
+  else if(get_top_level == 0 || reserver_water_lavel == 1) {
     condition = "ELSE Part";
-    pump_on_condition = 0;
-    water_lavel_count = 0;
+    pump_off_counter++;
+    if(pump_off_counter > 10 && water_lavel_count > 0) {
+      pump_on_condition = 0;
+      water_lavel_count = 0;
+      pump_off_counter=0;
+      send_low_level = get_low_level;
+      send_top_level = get_top_level;
+    }
   }
   else {
-    condition = "";
-    water_lavel_count = 0;
+    pump_off_counter=0;
+    //condition = "";
+    //water_lavel_count = 0;
   }
 }
 
@@ -182,7 +202,7 @@ void pumpOn() {
       master_status =1;
       if(pump_controll_mode == 1) {
         if(select_pump == 1) {
-          Serial.println("Pump 1 is On");
+          //Serial.println("Pump 1 is On");
           digitalWrite(PUMP_1_ON_PIN,HIGH);
           digitalWrite(PUMP_2_ON_PIN,LOW);
           if(pump_start_height == 0) {
@@ -195,7 +215,7 @@ void pumpOn() {
           }
         }
         if(select_pump == 2) {
-          Serial.println("Pump 2 is On");
+          //Serial.println("Pump 2 is On");
           digitalWrite(PUMP_2_ON_PIN,HIGH);
           digitalWrite(PUMP_1_ON_PIN,LOW);
           if(pump_start_height == 0) {
@@ -210,7 +230,7 @@ void pumpOn() {
       }
       if(pump_controll_mode == 2) {
         if(current_selected_pump == 1) {
-          Serial.println("Pump 2 is On");
+          //Serial.println("Pump 2 is On");
           digitalWrite(PUMP_2_ON_PIN,LOW);
           digitalWrite(PUMP_1_ON_PIN,HIGH);
           if(pump_start_height == 0) {
@@ -223,7 +243,7 @@ void pumpOn() {
           }
         }
         else if(current_selected_pump == 2) {
-          Serial.println("Pump 1 is On");
+          //Serial.println("Pump 1 is On");
           digitalWrite(PUMP_1_ON_PIN,LOW);
           digitalWrite(PUMP_2_ON_PIN,HIGH);
           if(pump_start_height == 0) {
@@ -280,6 +300,8 @@ void pumpSafety() {
 }
 
 void getWaterLevel() {
+  get_top_level = digitalRead(TOP_LEVEL);
+  get_low_level = digitalRead(LOW_LEVEL);
   digitalWrite(TRIGGERPIN, LOW);  
   delayMicroseconds(3); 
   
@@ -300,10 +322,11 @@ void updatePumpStatus(int pump_status,int water_level) {
   String url;
   int httpCode;
   url = "http://" + server_ip + "/room/public/api/pump-status?status=" + String(pump_status) + "&water_level="+ String(water_level) + "&pump=" + String(current_selected_pump);
+  url += "&top_level=" + String(send_top_level) + "&low_level=" + String(send_low_level);
     if (http.begin(client, url)) {
       httpCode = http.GET();
       if(httpCode == 200) {
-        Serial.println("Updated");    
+        //Serial.println("Updated");    
       }
     }
 }
@@ -355,7 +378,14 @@ void waterLavel() {
 
 void manualPumpOn() {
   String message = "{\"success\" : \"1\"}";
-  pump_on_condition = 1;
+  String post_data_string = "";
+  post_data_string = server.arg("type");
+  if(post_data_string == "on") {
+    pump_on_condition = 1;
+  }
+  else {
+    pump_on_condition = 0;
+  }
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
 }
@@ -416,7 +446,7 @@ void setTankHighLevel() {
     EEPROM.write(high_level_addr, data);
     EEPROM.commit();
     message = "{'success' : '1'}"; 
-    Serial.println("Level : "+ String(post_data));
+    //Serial.println("Level : "+ String(post_data));
   }
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", message);
@@ -572,6 +602,7 @@ void debug() {
     message += ",\"High Level\" : \"" + String(high_level) + "\"";
     message += ",\"Low Level\" : \"" + String(low_level) + "\""; 
     message += ",\"check_water_counter\" : \"" + String(check_water_counter) + "\"";
+    message += ",\"pump_off_counter\" : \"" + String(pump_off_counter) + "\"";
     message += ",\"pump_mode_condition\" : \"" + String(pump_mode_condition) + "\"";
     message += ",\"Water Check Condition\" : \"" + String(water_check_condition) + "\"";
     message += ",\"Current Time\" : \"" + String(current_time) +"\"";      
@@ -583,6 +614,9 @@ void debug() {
     message += ",\"Server IP\" : \"" + server_ip +"\"";
     message += ",\"Pump On Request\" : \"" + String(pump_on_request) +"\"";
     message += ",\"Pump off Request\" : \"" + String(pump_off_request) +"\"";
+    message += ",\"Top Level\" : \"" + String(digitalRead(TOP_LEVEL)) +"\"";
+    //message += ",\"Middle Level\" : \"" + String(digitalRead(MIDDLE_LEVEL)) +"\"";
+    message += ",\"Low_Level\" : \"" + String(digitalRead(LOW_LEVEL)) +"\"";
     message += " }";
     
   server.sendHeader("Access-Control-Allow-Origin", "*");
